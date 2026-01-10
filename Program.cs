@@ -1,12 +1,13 @@
-﻿using System;
-using MamboDMA.Games;
+﻿using MamboDMA.Games;
 using MamboDMA.Games.ABI;
+using MamboDMA.Games.BA;
 using MamboDMA.Games.CS2;
 using MamboDMA.Games.DayZ;
 using MamboDMA.Games.Example;
 using MamboDMA.Games.Reforger;
 using MamboDMA.Services;
 using Raylib_cs;
+using System;
 using static MamboDMA.Misc;
 using static MamboDMA.OverlayUI;
 // using static MamboDMA.OverlayUI; // ← remove this
@@ -64,7 +65,7 @@ namespace MamboDMA
             GameRegistry.Register(new ExampleGame());
             GameRegistry.Register(new ABIGame());
             GameRegistry.Register(new CS2Game());
-            // GameRegistry.Register(new SomeOtherGame());
+            GameRegistry.Register(new BrokenArrowGame());
             // GameRegistry.Register(new YetAnotherGame());
 
             // Optional default selection (no Start() happens here):
