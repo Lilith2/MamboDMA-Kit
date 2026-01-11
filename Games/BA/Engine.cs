@@ -20,10 +20,11 @@ namespace MamboDMA.Games.BA
             ModuleNotFound_BrokenArrowDLL,
             ModuleNotFound_UnityPlayerDLL,
             ModuleNotFound_UnityEngineCoreModuleDLL,
+            ModuleNotFound_DefaultEcsDLL,
             LocalPlayerCamera_Unknown,
             ViewMatrix_Unknown,
             LocalPlayer_Unknown,
-            EntityList_Unknown = 11
+            EntityList_Unknown = 12
         }
         private readonly ErrorList _errorList;
 
@@ -84,12 +85,12 @@ namespace MamboDMA.Games.BA
         private static EntityRaw[] _entitiesRaw = Array.Empty<EntityRaw>();
 
         private static List<DmaMemory.ModuleInfo> _modules = new();
-        private static DmaMemory.ModuleInfo _processModule, _brokenArrowDLL, _unityPlayerDLL, _unityEngineCoreModuleDLL;
+        private static DmaMemory.ModuleInfo _DefaultEcsDLL, _brokenArrowDLL, _unityPlayerDLL, _unityEngineCoreModuleDLL;
 
-        private static long _lastCamTick;
+        
 
         //long sigAddr = DmaMemory.FindSignature(yourSig, base, end);
-        public ulong ResolveGOMSigResult(ulong sigAddr)
+        private static ulong ResolveGOMSigResult(ulong sigAddr)
         {
             if (sigAddr != 0)
             {
@@ -108,10 +109,12 @@ namespace MamboDMA.Games.BA
                 Console.WriteLine($"Found GOM Offset at: 0x{finalAddress:X}");
                 return finalAddress;
             }
+            string s_err = _EngineError.GetErrorString(3);
+            Console.WriteLine(s_err);
             return 0;
         }
 
-        public ulong FindGOM(DmaMemory.ModuleInfo moduleInfo)
+        private static ulong FindGOM(DmaMemory.ModuleInfo moduleInfo)
         {
             string s_err;
             ulong result = DmaMemory.FindSignature(_tagNotDefinedSig);
@@ -130,20 +133,38 @@ namespace MamboDMA.Games.BA
             return false;
         }
 
-        private bool CacheModules()
+        private static bool CacheModules()
         {
-            bool first = false;
-            bool second = false;
-
             _modules = DmaMemory.GetModules();
-            if (_modules != null) first = true ;
+            if (_modules == null) return false;
 
-            _clientModule = _modules.FirstOrDefault(m => string.Equals(m.Name, "client.dll", StringComparison.OrdinalIgnoreCase));
-            if (_clientModule != null) second = true;
+            _DefaultEcsDLL = _modules.FirstOrDefault(m => string.Equals(m.Name, "DefaultEcs.dll", StringComparison.OrdinalIgnoreCase));
+            if (_DefaultEcsDLL == null)
+            {
+                Console.WriteLine(_EngineError.GetErrorString(8));
+            }
 
-            if (first && second)
-                return true;
-            return false;
+            _brokenArrowDLL = _modules.FirstOrDefault(m => string.Equals(m.Name, "BrokenArrow.dll", StringComparison.OrdinalIgnoreCase));
+            if (_brokenArrowDLL == null)
+            {
+                Console.WriteLine(_EngineError.GetErrorString(5));
+            }
+
+            _unityPlayerDLL = _modules.FirstOrDefault(m => string.Equals(m.Name, "UnityPlayer.dll", StringComparison.OrdinalIgnoreCase));
+            if (_unityPlayerDLL == null)
+            {
+                Console.WriteLine(_EngineError.GetErrorString(6));
+            }
+
+            _unityEngineCoreModuleDLL = _modules.FirstOrDefault(m => string.Equals(m.Name, "UnityEngine.CoreModule.dll", StringComparison.OrdinalIgnoreCase));
+            if (_unityEngineCoreModuleDLL == null)
+            {
+                Console.WriteLine(_EngineError.GetErrorString(6));
+            }
+
+            if (_DefaultEcsDLL == null || _brokenArrowDLL == null || _unityPlayerDLL == null || _unityEngineCoreModuleDLL == null)
+                return false;
+            else return true;
         }
 
         public struct CamereraData
@@ -158,8 +179,6 @@ namespace MamboDMA.Games.BA
         {
             public ulong Ptr;
             public UnitCategoryType categoryType;
-            public UnitType unitType;
-            public UnitRole role;
             public int TeamID;
             public Vector3f Position;
             public Vector2f Projected;
@@ -168,8 +187,6 @@ namespace MamboDMA.Games.BA
             {
                 Ptr = 0;
                 categoryType = UnitCategoryType.None;
-                unitType = UnitType.None;
-                role = UnitRole.None;
                 TeamID = 0;
                 Position = new Vector3f(0,0,0);
                 Projected = new Vector2f(0,0);
