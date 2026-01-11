@@ -2,6 +2,7 @@
 using MamboDMA;
 using System;
 using System.Collections.Frozen;
+using System.Numerics;
 using System.Reflection;
 using static MamboDMA.Games.BA.Engine;
 using static MamboDMA.Misc;
@@ -78,12 +79,11 @@ namespace MamboDMA.Games.BA
         private static EngineError _EngineError;
         private static readonly ulong _gomOffset = 0x1D09650;
         //inside UnityPlayer.dll
-        public static string _tagNotDefinedSig = "48 8D 15 ?? ?? ?? ?? 4C 0F 45 45 8F 48 8D 4D 0F E8 ?? ?? ?? ?? 4C 8B 00 48 8D 54 24 30 33 C9 48 8B D8 FF 15 ?? ?? ?? ?? 48 8B 43 08 48 89 44 24 38 41 8B C7 48 8B 1D ?? ?? ?? ?? 4C 8D 45 67 48 8B CB 89 45 67 48 8D 55 C7 E8";
-        public static CamereraData Camera;
+        private static string _tagNotDefinedSig = "48 8D 15 ?? ?? ?? ?? 4C 0F 45 45 8F 48 8D 4D 0F E8 ?? ?? ?? ?? 4C 8B 00 48 8D 54 24 30 33 C9 48 8B D8 FF 15 ?? ?? ?? ?? 48 8B 43 08 48 89 44 24 38 41 8B C7 48 8B 1D ?? ?? ?? ?? 4C 8D 45 67 48 8B CB 89 45 67 48 8D 55 C7 E8";
+        private static CameraData Camera = new();
         public static ScreenSettings Screen = new(ScreenService.Current.W, ScreenService.Current.H);
 
-        private static EntityRaw[] _entitiesRaw = Array.Empty<EntityRaw>();
-
+        private static ulong _ProcessBase;
         private static List<DmaMemory.ModuleInfo> _modules = new();
         private static DmaMemory.ModuleInfo _DefaultEcsDLL, _brokenArrowDLL, _unityPlayerDLL, _unityEngineCoreModuleDLL;
 
@@ -127,12 +127,6 @@ namespace MamboDMA.Games.BA
             return result;
         }
 
-        public bool InitBAProcess()
-        {
-
-            return false;
-        }
-
         private static bool CacheModules()
         {
             _modules = DmaMemory.GetModules();
@@ -167,27 +161,73 @@ namespace MamboDMA.Games.BA
             else return true;
         }
 
-        public struct CamereraData
+        //run this function in a constant loop in 
+        public static void UpdateCamera()
         {
-            CameraType cameraType;
-            // TO-DO finish basic structs which will be my custom types for reading memory in chunks
+            Camera.busy = 1;
+            if (Camera.myCameraPtr != 0 && Camera.cameraManagerPtr != 0)
+            {
+                //use a scatter read function here to quickly update cam info
+
+                Camera.busy = 0;
+                return;
+            }
+            //if cam pointers invalid, refresh all pointers here
+            //use regular dma read
+
+            Camera.busy = 0;
+            return;
+        }
+
+        private bool WorldToScreen(in Vector3f position, out float _x, out float _y)
+        {
+            _x = _y = 0f;
+            CameraData snap;
+            while (true)
+            {
+                int x = Volatile.Read(ref Camera.busy);
+                if ((x & 1) != 0) continue;     // writer in progress
+                snap = Camera;               // struct copy
+                int y = Volatile.Read(ref Camera.busy);
+                if (x == y) break;     // stable snapshot
+            }
+            //from here we have a good Camera loaded into local copy
 
 
+            return false;
+        }
+
+        public struct CameraData
+        {
+            public int busy;
+            public CameraType cameraType;
+            public ulong cameraManagerPtr;
+            public ulong myCameraPtr;
+            public ulong viewMatrixPtr;
+            public ulong positionPtr;
+            public Matrix4x4 viewMatrix;
+            public Vector3f position;
+        }
+
+        public struct EntityUnit
+        { 
+            public EntityRaw parent;
+            public UnitCategoryType _unitCategoryType;
+            public UnitType _unitType;
+            public UnitRole _unitRole;
+            public string unitName;
+            public int teamID;
         }
 
         public struct EntityRaw
         {
             public ulong Ptr;
-            public UnitCategoryType categoryType;
-            public int TeamID;
             public Vector3f Position;
             public Vector2f Projected;
 
             public EntityRaw()
             {
                 Ptr = 0;
-                categoryType = UnitCategoryType.None;
-                TeamID = 0;
                 Position = new Vector3f(0,0,0);
                 Projected = new Vector2f(0,0);
             }
