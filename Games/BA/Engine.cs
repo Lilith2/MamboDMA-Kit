@@ -1,16 +1,81 @@
 ﻿using ArmaReforgerFeeder;
 using MamboDMA;
 using System;
+using System.Collections.Frozen;
 using System.Reflection;
+using static MamboDMA.Games.BA.Engine;
 using static MamboDMA.Misc;
 
 namespace MamboDMA.Games.BA
 {
+    public sealed class EngineError
+    {
+        private enum ErrorList
+        { 
+            Success = 0,
+            ProcessInvalid,
+            GomSigNotFound,
+            GomResolveFailed,
+            ModuleNotFound_BaseProcess,
+            ModuleNotFound_BrokenArrowDLL,
+            ModuleNotFound_UnityPlayerDLL,
+            ModuleNotFound_UnityEngineCoreModuleDLL,
+            LocalPlayerCamera_Unknown,
+            ViewMatrix_Unknown,
+            LocalPlayer_Unknown,
+            EntityList_Unknown = 11
+        }
+        private readonly ErrorList _errorList;
+
+        private FrozenDictionary<ErrorList, String> _ErrorStrings;
+        public EngineError() 
+        {
+            // 1. Create a temporary source
+            var source = new Dictionary<ErrorList, string>
+            {
+                { ErrorList.Success, "Success." },
+                { ErrorList.ProcessInvalid, "Invalid Process Module. Check if Process is running." },
+                { ErrorList.GomSigNotFound, "GOM Signature Finder has failed. Check in IDA... Something changed or the sig finder is improperly used." },
+                { ErrorList.ModuleNotFound_BaseProcess, "Broken Arrow exe Invalid. Make sure the game is running & DMA card is working."},
+                { ErrorList.ModuleNotFound_BrokenArrowDLL, "BrokenArrow.DLL module Invalid. Check the code using this named module. It loads at runtime and is packed when game not running."},
+                { ErrorList.ModuleNotFound_UnityPlayerDLL, "UnityPlayer.DLL module Invalid. Check the code using this named module. It's always unpacked in the game's directory & loads on runtime."},
+                { ErrorList.ModuleNotFound_UnityEngineCoreModuleDLL, "UnityEngine.CoreModule.DLL module Invalid. Check the code using this module. It loads at runtime and is packed when game not running."},
+                { ErrorList.LocalPlayerCamera_Unknown, "LocalPlayer Camera Pointer Unknown."},
+                { ErrorList.ViewMatrix_Unknown, "View Matrix of LocalPlayer's Camera Unknown."},
+                { ErrorList.LocalPlayer_Unknown, "LocalPlayer pointer Unknown."},
+                { ErrorList.EntityList_Unknown, "EntityList Unknown."}
+            };
+
+            // 2. "Freeze" it into the FrozenDictionary
+            _ErrorStrings = source.ToFrozenDictionary();
+        }
+
+        public string GetErrorString(int _err)
+        {
+            if(CheckErrorCode(_err))
+                return _ErrorStrings[(ErrorList)_err];
+            return "\n";
+        }
+
+        public static bool CheckErrorCode(int _err)
+        {
+            if (Enum.TryParse(typeof(ErrorList), _err.ToString(), out var result) && Enum.IsDefined(typeof(ErrorList), result))
+            {
+                return true;
+            }
+            return false ;
+        }
+
+        
+    }
+
+
     //I used "sealed" so no other part of the program can inherit from it. Engine.cs is a common design in this kit.
     //BA Engine class is fully self contained & can't be accidentally put into other game's classes.
     public sealed class Engine
     {
-        private static ulong _gomOffset = 0x1D09650;
+        private static EngineError _EngineError;
+        private static readonly ulong _gomOffset = 0x1D09650;
         //inside UnityPlayer.dll
         public static string _tagNotDefinedSig = "48 8D 15 ?? ?? ?? ?? 4C 0F 45 45 8F 48 8D 4D 0F E8 ?? ?? ?? ?? 4C 8B 00 48 8D 54 24 30 33 C9 48 8B D8 FF 15 ?? ?? ?? ?? 48 8B 43 08 48 89 44 24 38 41 8B C7 48 8B 1D ?? ?? ?? ?? 4C 8D 45 67 48 8B CB 89 45 67 48 8D 55 C7 E8";
         public static CamereraData Camera;
@@ -20,6 +85,8 @@ namespace MamboDMA.Games.BA
 
         private static List<DmaMemory.ModuleInfo> _modules = new();
         private static DmaMemory.ModuleInfo _processModule, _brokenArrowDLL, _unityPlayerDLL, _unityEngineCoreModuleDLL;
+
+        private static long _lastCamTick;
 
         //long sigAddr = DmaMemory.FindSignature(yourSig, base, end);
         public ulong ResolveGOMSigResult(ulong sigAddr)
@@ -38,7 +105,7 @@ namespace MamboDMA.Games.BA
                 ulong rip = movAddr + 7;
                 ulong finalAddress = rip + displacement;
 
-                Console.WriteLine($"Found Data at: 0x{finalAddress:X}");
+                Console.WriteLine($"Found GOM Offset at: 0x{finalAddress:X}");
                 return finalAddress;
             }
             return 0;
@@ -46,22 +113,37 @@ namespace MamboDMA.Games.BA
 
         public ulong FindGOM(DmaMemory.ModuleInfo moduleInfo)
         {
-            DmaMemory.FindSignature(_tagNotDefinedSig);
-            return 0;
+            string s_err;
+            ulong result = DmaMemory.FindSignature(_tagNotDefinedSig);
+            if (result == 0 || result < 0)
+            {
+                s_err = _EngineError.GetErrorString(2);
+                Console.WriteLine(s_err);
+                return result;
+            }
+            return result;
         }
 
-        public bool InitProcess()
-        { 
-            
-        }
-
-        private static void CacheModules()
+        public bool InitBAProcess()
         {
+
+            return false;
+        }
+
+        private bool CacheModules()
+        {
+            bool first = false;
+            bool second = false;
+
             _modules = DmaMemory.GetModules();
-            if (_modules == null) return;
+            if (_modules != null) first = true ;
 
             _clientModule = _modules.FirstOrDefault(m => string.Equals(m.Name, "client.dll", StringComparison.OrdinalIgnoreCase));
-            if (_clientModule == null) return;
+            if (_clientModule != null) second = true;
+
+            if (first && second)
+                return true;
+            return false;
         }
 
         public struct CamereraData
